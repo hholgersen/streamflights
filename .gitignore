@@ -8,6 +8,8 @@
 .bash_history
 _*
 *.csv
+*.txt
+*.pickle
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

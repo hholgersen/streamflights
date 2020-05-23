@@ -18,42 +18,65 @@ class custom_clock():
         return(self.starttime + elapsed)
     
     
-def produce_flights(flights_pickle, 
-                    sink,
-                    start_time = datetime.datetime.now(), 
-                    data_year = 2015):
+producer = KafkaProducer(
+   value_serializer=lambda m: dumps(m).encode('utf-8'), 
+   bootstrap_servers=['kafka:9093'])
+
+
+def send_flights(message):
+    keybite = bytes(message['id'], encoding='utf-8')
+    producer.send("departures", key=keybite, value=message)
+    producer.flush()
+
+def flightsgenerator(filepath):
+    with open(filepath) as f:
+        for line in f:
+            yield line
     
-    handle = open(flights_pickle, 'rb')
-    departures = pickle.load(handle)
+def produce_flights(json_obj, 
+                    sink,
+                    time_field,
+                    start_time = datetime.datetime.now()
+                   ):
+    '''
+    Send elements of a JSON file to a sink, at a specified time specified in the JSON.
+    The time field must be of type datetime, and the field name must be specified in `time_field`.
+    
+    Known bug: Really a design flaw, but many events at the same time will result in not all being sent.
+        Need to create a "send window" instead of fixed moment.
+    
+    @param json_obj: List or iterable returning JSON
+    @param sink: Callback function that gets called for each element
+    @param time_field: Datetime object containing the time it gets sent. This gets serialized before sinking.
+    @param start_time: Optional datetime for simulating a different time.
+    '''
+    
     q = queue.Queue()
-    for i in departures:
-    q.put(i)
+    
+    for i in json_obj:
+        q.put(i)
 
-    DATA_YEAR = 2015
+    clock = custom_clock(start_time)
 
-    clock = custom_clock(datetime.datetime.strptime('20200101 06:15', '%Y%m%d %H:%M'))
-    years_to_add = clock.get_time().year - DATA_YEAR
-    years_delta = dateutil.relativedelta.relativedelta(years=years_to_add)
-
-     while not q.empty():
+    while not q.empty():
         departure = q.get()
-        departure['departure_dt'] = departure['departure_dt'] + years_delta
-        wait =  (departure['departure_dt'] - clock.get_time()).total_seconds()
-        departure['departure_dt'] = str(departure['departure_dt'])
-        keybite = bytes(departure['id'], encoding='utf-8')
-        try:
+
+        wait =  (departure[time_field] - clock.get_time()).total_seconds()
+        departure[time_field] = str(departure[time_field])
+        
+        if wait>=0:
             sleep(wait)
-            producer.send("departures", key=keybite, value=departure)
-            producer.flush()
-        except:
-            pass
-            
+            sink(departure)
+
+
             
 if __name__ == '__main__':
+        
+    departures = flightsgenerator('flights/arrivals.txt')
     
-    start_time = datetime.datetime.strptime('20200101 06:15', '%Y%m%d %H:%M')
+    start_time = datetime.datetime.strptime('20150101 06:15', '%Y%m%d %H:%M')
     
-    produce_flights('/app/departures.pickle', None, start_time = start_time)
+    produce_flights(departures, send_flights, 'departure_dt', start_time = start_time)
             
             
             
