@@ -4,7 +4,7 @@ import datetime
 import dateutil
 from time import sleep
 from kafka import KafkaProducer
-from json import dumps
+from json import dumps, loads
 
 class custom_clock():
     import datetime
@@ -16,11 +16,6 @@ class custom_clock():
     def get_time(self):
         elapsed = datetime.datetime.now() - self.invocation_time
         return(self.starttime + elapsed)
-    
-    
-producer = KafkaProducer(
-   value_serializer=lambda m: dumps(m).encode('utf-8'), 
-   bootstrap_servers=['kafka:9093'])
 
 
 def send_flights(message):
@@ -31,7 +26,12 @@ def send_flights(message):
 def flightsgenerator(filepath):
     with open(filepath) as f:
         for line in f:
-            yield line
+            try:
+                dep = loads(line)
+                dep['departure_dt'] = datetime.datetime.strptime(dep['departure_dt'], '%Y%m%d %H:%M')
+                yield dep
+            except:
+                pass
     
 def produce_flights(json_obj, 
                     sink,
@@ -69,10 +69,19 @@ def produce_flights(json_obj,
             sink(departure)
 
 
-            
 if __name__ == '__main__':
         
-    departures = flightsgenerator('flights/arrivals.txt')
+    while True:
+        try:
+            producer = KafkaProducer(
+                value_serializer=lambda m: dumps(m).encode('utf-8'), 
+                bootstrap_servers=['kafka:9093'])
+        except:
+            continue
+        else:
+            break
+
+    departures = flightsgenerator('/app/flights/departures.txt')
     
     start_time = datetime.datetime.strptime('20150101 06:15', '%Y%m%d %H:%M')
     

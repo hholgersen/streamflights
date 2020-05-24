@@ -1,8 +1,9 @@
-FROM python:3.8
+FROM python:3.6.7-alpine3.6
 
 COPY . /app/
 WORKDIR /app
 RUN pip install -r requirements.txt
 
 EXPOSE 9093
-CMD ['python', '/app/flights_producer.py']
+CMD ["python", "flights_producer.py"]
+
